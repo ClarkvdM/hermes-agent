@@ -434,21 +434,6 @@ _PROFILE_NAME_RE = r"^[a-z0-9][a-z0-9_-]{0,63}$"  # mirrors hermes_cli.profiles.
 _explicit_cli_profile: str | None = None
 
 
-def _inside_mcp_add_args(argv: list, index: int) -> bool:
-    """True once argv reaches `hermes mcp add ... --args <command argv>`.
-
-    ``mcp add --args`` is command-argv passthrough. Flags after that point
-    belong to the child MCP command (for example Docker MCP Toolkit's
-    ``--profile``), not to Hermes' own profile selector.
-    """
-    try:
-        mcp_index = argv.index("mcp", 0, index)
-        argv.index("add", mcp_index + 1, index)
-    except ValueError:
-        return False
-    return True
-
-
 def _looks_like_hermes_invocation() -> bool:
     """False when ``sys.argv`` belongs to a test runner rather than a ``hermes`` run.
 
@@ -486,14 +471,18 @@ def _scan_profile_flag(argv: list) -> tuple:
     plugin (`hermes kanban ... -p 8080`), and option-looking values (``no:xdist``,
     ``--flag``) are always a silent skip.
     """
-    from hermes_cli._parser import top_level_value_flag_sets
+    from hermes_cli._parser import top_level_value_flag_sets, inside_mcp_add_args
 
     value_flags, optional_value_flags = top_level_value_flag_sets()
     i = 0
     saw_subcommand = False
     while i < len(argv):
         arg = argv[i]
-        if arg == "--" or (arg == "--args" and _inside_mcp_add_args(argv, i)):
+        # This subcommand owns -p/--prompt and arbitrary task text. Global
+        # --profile must precede it; never interpret task tokens as profiles.
+        if argv[i:i + 2] == ["skills", "select"]:
+            break
+        if arg == "--" or (arg == "--args" and inside_mcp_add_args(argv, i)):
             break
         if arg in {"--profile", "-p"} and i + 1 < len(argv):
             raw = argv[i + 1]
@@ -663,6 +652,13 @@ def _apply_profile_override() -> None:
 
 
 _apply_profile_override()
+# Keep selection offline until explicit consent: bypass dotenv, plugins, model
+# bootstrap and the interactive CLI. The key is read only from the inherited env.
+if sys.argv[1:3] == ["skills", "select"]:
+    from hermes_cli.skills_select_cli import main as _skills_select_main
+
+    raise SystemExit(_skills_select_main(sys.argv[3:]))
+
 # ``-p``/active_profile re-homed the process after hermes_bootstrap ran: re-point the temp vars
 # at THIS home's scratch dir (a user-set TMPDIR is still left alone).
 try:

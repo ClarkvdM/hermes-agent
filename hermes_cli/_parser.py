@@ -26,6 +26,22 @@ _VALUE_FLAGS_FALLBACK: frozenset[str] = frozenset({
 _OPTIONAL_VALUE_FLAGS_FALLBACK: frozenset[str] = frozenset({"-c", "--continue"})
 
 
+def inside_mcp_add_args(argv: list, index: int) -> bool:
+    """True once argv reaches `hermes mcp add ... --args <command argv>`.
+
+    ``mcp add --args`` is command-argv passthrough. Flags after that point
+    belong to the child MCP command (for example Docker MCP Toolkit's
+    ``--profile``), not to Hermes' own profile selector.
+    """
+    try:
+        mcp_index = argv.index("mcp", 0, index)
+        argv.index("add", mcp_index + 1, index)
+    except ValueError:
+        return False
+    return True
+
+
+
 def _cfg_path() -> str:
     """``~/.hermes/config.yaml`` spelled for the active profile, for help text.
 

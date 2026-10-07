@@ -25,6 +25,12 @@ def build_skills_parser(subparsers, *, cmd_skills: Callable) -> None:
     )
     skills_subparsers = skills_parser.add_subparsers(dest="skills_action")
 
+    from hermes_cli.skills_select_cli import add_arguments, run as run_select
+    skills_select = skills_subparsers.add_parser("select", help="Select useful guidance with Jev (explicit upload consent)")
+    add_arguments(skills_select)
+    skills_select.set_defaults(func=run_select)
+
+
     skills_trust = skills_subparsers.add_parser("trust",
         help="Trust a project so its repo-local skills (./.hermes/skills, ./.agents/skills) load")
     skills_trust.add_argument("path", nargs="?", default=None,

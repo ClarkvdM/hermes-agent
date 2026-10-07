@@ -16,6 +16,7 @@ See also:
 
 - [Bundled Skills Catalog](../../reference/skills-catalog.md)
 - [Official Optional Skills Catalog](../../reference/optional-skills-catalog.md)
+- [Select skills with Jev](skill-selection.md): opt-in CLI scoring with a hard guidance token budget.
 
 ## Install from the website
 
