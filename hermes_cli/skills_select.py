@@ -49,7 +49,16 @@ def discover_skills(root: Path, *, skip_invalid: bool = False) -> tuple[list[Ski
     if not root.is_dir():
         raise ValueError(f'Skills directory does not exist: {root}')
     skills, skipped, contents, names = [], [], {}, set()
-    for directory, dirs, files in os.walk(root, followlinks=False):
+
+    def traversal_error(exc: OSError) -> None:
+        # os.walk otherwise swallows scandir failures and returns a partial
+        # inventory. Never expose the OS message (which may contain secrets).
+        path = str(Path(exc.filename or root).relative_to(root))
+        if not skip_invalid:
+            raise OSError(f'Unable to traverse skills directory: {path}') from None
+        skipped.append({'path': path, 'reason': 'traversal_error'})
+
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=traversal_error):
         dirs[:] = sorted(d for d in dirs if not d.startswith('.')
                          and d.casefold() not in {'archive', 'archives', 'archived'}
                          and not (Path(directory) / d).is_symlink())

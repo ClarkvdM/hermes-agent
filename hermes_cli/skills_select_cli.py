@@ -21,7 +21,7 @@ def add_arguments(parser):
     parser.add_argument('--format', choices=['json', 'context'], default='json')
     parser.add_argument('--allow-upload', action='store_true', help='Consent to send task/context and skill names/descriptions to TypeSafe')
     parser.add_argument('--dry-run', action='store_true', help='Preview exact request payloads offline; no key required')
-    parser.add_argument('--skip-invalid', action='store_true', help='Omit invalid skill frontmatter and report paths/reasons (default: fail)')
+    parser.add_argument('--skip-invalid', action='store_true', help='Omit invalid frontmatter or untraversable directories and report paths/reasons (default: fail)')
 
 
 def _inputs(args):

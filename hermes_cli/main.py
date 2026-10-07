@@ -654,10 +654,13 @@ def _apply_profile_override() -> None:
 _apply_profile_override()
 # Keep selection offline until explicit consent: bypass dotenv, plugins, model
 # bootstrap and the interactive CLI. The key is read only from the inherited env.
-if sys.argv[1:3] == ["skills", "select"]:
+from hermes_cli._parser import command_argv as _command_argv
+
+_selection_argv = _command_argv(sys.argv[1:])
+if _selection_argv[:2] == ["skills", "select"]:
     from hermes_cli.skills_select_cli import main as _skills_select_main
 
-    raise SystemExit(_skills_select_main(sys.argv[3:]))
+    raise SystemExit(_skills_select_main(_selection_argv[2:]))
 
 # ``-p``/active_profile re-homed the process after hermes_bootstrap ran: re-point the temp vars
 # at THIS home's scratch dir (a user-set TMPDIR is still left alone).
