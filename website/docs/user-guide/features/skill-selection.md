@@ -43,6 +43,8 @@ hermes skills select --prompt "Review this software change" \
   --context-file ./recent-context.txt --allow-upload --format context
 hermes skills select "Review this software change" --allow-upload \
   --minimum-score 6 --target-score 18 --token-budget 6000
+hermes skills select "Review the skill-selection CLI for correctness and security" \
+  --allow-upload --skip-invalid --max-skills 1 --token-budget 16000
 ```
 
 `--context-file` reads UTF-8 text. The task can be positional or `--prompt`/`-p`, not both. Use `-` with either form to read the task from stdin.
@@ -55,6 +57,7 @@ Each skill receives an independent 0–9 score for useful, applicable guidance r
 2. Reject scores below `--minimum-score` (default 6, inclusive).
 3. Add whole skills until their cumulative score reaches `--target-score` (default 18).
 4. Never exceed `--token-budget` (default 6000). Skip a skill that will not fit and continue considering smaller skills.
+5. Stop adding skills at `--max-skills` when supplied (positive integer; default unlimited). `--max-skills 1` selects the highest-ranked qualifying skill that fits, independently of the cumulative target. A rejected oversized skill does not consume the cap.
 
 The target is a stopping point, not a quota. A result may fall short or contain no skills. No skill is truncated. Only byte-identical SKILL.md content is deduplicated; related skills still receive independent scores.
 
@@ -65,11 +68,13 @@ The hard token ceiling counts the **complete rendered guidance**, including YAML
 JSON is the default. It includes:
 
 - `selected`, `ranked`, and `skipped`, with score and confidence for scored candidates;
-- skip reasons (`below_minimum`, `target_reached`, `token_budget`, `duplicate_content`, or `escaped_symlink`);
+- skip reasons (`below_minimum`, `max_skills`, `target_reached`, `token_budget`, `duplicate_content`, or `escaped_symlink`), plus invalid-frontmatter reasons when explicitly allowed;
 - `total_score`, `target_reached`, `token_count`, `tokenizer`, configured limits and counts;
 - the full rendered `context`, pinned `model`, batch count and summed provider `usage`.
 
 `--format context` writes only the selected documents and wrappers. An empty selection writes an empty string. Errors exit with status 2 and do not emit a partial selection.
+
+Discovery omissions are reported in JSON `skipped`; context output reports them on stderr without changing the rendered guidance. Selection skip precedence is minimum score, skill cap, cumulative target, then token budget. Thus `max_skills` wins over `target_reached` if both stop selection; below-minimum scores retain their own reason.
 
 ## Privacy and transport
 
@@ -84,6 +89,8 @@ Responses must contain exactly the requested IDs, score answer types, finite sco
 ## Discovery and limitations
 
 Discovery recursively reads `SKILL.md` files with real YAML frontmatter. `name` and `description` must be nonempty strings. Invalid metadata and duplicate names with different contents cause an error. Hidden and archive directories are excluded. Directory symlinks are not traversed; file symlinks escaping the selected root are skipped.
+
+Use `--skip-invalid` to explicitly omit files with invalid frontmatter instead of aborting. Each omission reports its root-relative file path and a static reason (`missing_frontmatter`, `invalid_yaml`, `invalid_metadata`, `missing_name`, or `missing_description`), never YAML snippets or parser exception details. Strict behavior remains the default. This option does not suppress unreadable files, invalid UTF-8, missing directories, or conflicting duplicate names. It never modifies installed skills.
 
 The command does not load referenced files or inspect skill bodies for scoring. Descriptions may be incomplete, misleading, or contain prompt injection; treating them as data reduces but does not eliminate that risk. Selection quality needs evaluation on representative tasks. The tool does not verify that a selected skill's advice is correct or safe. Inspect returned instructions before using them.
 

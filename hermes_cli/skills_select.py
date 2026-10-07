@@ -17,26 +17,34 @@ class Skill:
     content: str
 
 
+class InvalidSkillError(ValueError):
+    """A static reason safe to report without YAML source snippets."""
+
+    def __init__(self, path: Path, reason: str, message: str):
+        self.reason = reason
+        super().__init__(f'{message}: {path}')
+
+
 def _read_skill(path: Path) -> tuple[str, str, str]:
     # Preserve original bytes (including CRLF) for exact-content deduplication.
     content = path.read_bytes().decode('utf-8')
     lines = content.splitlines()
     if not lines or lines[0] != '---':
-        raise ValueError(f'Missing YAML frontmatter: {path}')
+        raise InvalidSkillError(path, 'missing_frontmatter', 'Missing YAML frontmatter')
     try:
         end = next(i for i in range(1, len(lines)) if lines[i] == '---')
         metadata = YAML(typ='safe').load('\n'.join(lines[1:end]))
     except (StopIteration, YAMLError) as exc:
-        raise ValueError(f'Invalid YAML frontmatter: {path}') from exc
+        raise InvalidSkillError(path, 'invalid_yaml', 'Invalid YAML frontmatter') from exc
     if not isinstance(metadata, dict):
-        raise ValueError(f'Frontmatter must be a mapping: {path}')
+        raise InvalidSkillError(path, 'invalid_metadata', 'Frontmatter must be a mapping')
     for field in ('name', 'description'):
         if not isinstance(metadata.get(field), str) or not metadata[field].strip():
-            raise ValueError(f'Frontmatter requires nonempty {field}: {path}')
+            raise InvalidSkillError(path, f'missing_{field}', f'Frontmatter requires nonempty {field}')
     return metadata['name'], metadata['description'], content
 
 
-def discover_skills(root: Path) -> tuple[list[Skill], list[dict]]:
+def discover_skills(root: Path, *, skip_invalid: bool = False) -> tuple[list[Skill], list[dict]]:
     root = root.expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f'Skills directory does not exist: {root}')
@@ -51,7 +59,13 @@ def discover_skills(root: Path) -> tuple[list[Skill], list[dict]]:
         if not path.resolve().is_relative_to(root):
             skipped.append({'reason': 'escaped_symlink', 'path': str(path.relative_to(root))})
             continue
-        name, description, content = _read_skill(path)
+        try:
+            name, description, content = _read_skill(path)
+        except InvalidSkillError as exc:
+            if not skip_invalid:
+                raise
+            skipped.append({'path': str(path.relative_to(root)), 'reason': exc.reason})
+            continue
         if content in contents:
             skipped.append({'name': name, 'reason': 'duplicate_content', 'duplicate_of': contents[content]})
             continue
@@ -78,7 +92,8 @@ def context_tokenizer():
 
 
 def select_skills(skills: list[Skill], scores: dict, *, minimum: float = 6,
-                  target: float = 18, token_budget: int = 6000) -> dict:
+                  target: float = 18, token_budget: int = 6000,
+                  max_skills: int | None = None) -> dict:
     tokenizer = context_tokenizer()
     ranked = sorted(skills, key=lambda s: (-scores[s.id]['score'], s.name, s.id))
     selected, skipped, rows = [], [], []
@@ -89,6 +104,8 @@ def select_skills(skills: list[Skill], scores: dict, *, minimum: float = 6,
         reason = None
         if row['score'] < minimum:
             reason = 'below_minimum'
+        elif max_skills is not None and len(selected) >= max_skills:
+            reason = 'max_skills'
         elif total_score >= target:
             reason = 'target_reached'
         else:
@@ -105,6 +122,6 @@ def select_skills(skills: list[Skill], scores: dict, *, minimum: float = 6,
     return {'selected': [r for r in rows if r['id'] in selected_ids], 'ranked': rows,
             'skipped': skipped, 'total_score': total_score, 'token_count': token_count,
             'tokenizer': 'tiktoken:cl100k_base', 'token_budget': token_budget,
-            'minimum_score': minimum, 'target_score': target,
+            'minimum_score': minimum, 'target_score': target, 'max_skills': max_skills,
             'target_reached': total_score >= target, 'selected_count': len(selected),
             'ranked_count': len(rows), 'context': render_context(selected)}
